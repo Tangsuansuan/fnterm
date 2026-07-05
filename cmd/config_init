@@ -1,0 +1,3 @@
+#!/bin/bash
+echo "FnTerm config_init: ok"
+exit 0

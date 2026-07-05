@@ -1,0 +1,1006 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FnTerm</title>
+    <link rel="stylesheet" href="https://unpkg.com/@xterm/xterm@5.5.0/css/xterm.css" />
+    <style>
+        :root {
+            --bg: #0f1117;
+            --bg2: #161822;
+            --bg3: #1c1f2e;
+            --border: #252840;
+            --accent: #7aa2f7;
+            --accent-dim: #3b4261;
+            --text: #c0caf5;
+            --text2: #9aa5ce;
+            --text-dim: #565f89;
+            --red: #f7768e;
+            --green: #9ece6a;
+            --yellow: #e0af68;
+            --orange: #ff9e64;
+            --purple: #bb9af7;
+            --cyan: #7dcfff;
+            --sidebar-w: 280px;
+            --transition: 0.2s ease;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            height: 100vh;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* ============ 主布局 ============ */
+        #app { display: flex; flex-direction: column; height: 100vh; }
+        #main-area { display: flex; flex: 1; overflow: hidden; position: relative; }
+
+        /* ============ 状态栏 ============ */
+        .status-bar {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 6px 14px; background: var(--bg2); border-bottom: 1px solid var(--border);
+            font-size: 12px; color: var(--text-dim); flex-shrink: 0; min-height: 34px;
+            font-family: 'Cascadia Code', 'Fira Code', monospace;
+        }
+        .status-bar .left { display: flex; align-items: center; gap: 10px; }
+        .status-bar .right { display: flex; align-items: center; gap: 8px; }
+        .status-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+        .status-dot.on { background: var(--green); box-shadow: 0 0 5px var(--green); }
+        .status-dot.off { background: var(--red); }
+        .status-bar .brand { color: var(--accent); font-weight: 700; }
+        .status-bar .conn-info { color: var(--text2); }
+        .btn-sm {
+            background: transparent; border: 1px solid var(--accent-dim); color: var(--text2);
+            padding: 3px 10px; border-radius: 4px; cursor: pointer; font-size: 11px;
+            font-family: inherit; transition: all var(--transition);
+        }
+        .btn-sm:hover { background: var(--accent-dim); border-color: var(--accent); color: var(--text); }
+        .btn-sm.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+        .btn-sm.danger { color: var(--red); border-color: var(--red); }
+        .btn-sm.danger:hover { background: rgba(247,118,142,0.15); }
+
+        /* ============ 侧边栏 ============ */
+        #sidebar {
+            width: var(--sidebar-w); min-width: var(--sidebar-w);
+            background: var(--bg2); border-right: 1px solid var(--border);
+            display: flex; flex-direction: column; overflow: hidden;
+            transition: width var(--transition), min-width var(--transition), opacity var(--transition);
+        }
+        #sidebar.collapsed { width: 0; min-width: 0; opacity: 0; overflow: hidden; }
+
+        /* 侧边栏头部 */
+        .sidebar-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 10px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+        }
+        .sidebar-header .title { font-size: 13px; font-weight: 600; color: var(--text2); display: flex; align-items: center; gap: 6px; }
+        .sidebar-header .actions { display: flex; gap: 4px; }
+        .icon-btn {
+            background: transparent; border: none; color: var(--text-dim); cursor: pointer;
+            width: 28px; height: 28px; border-radius: 5px; display: flex; align-items: center;
+            justify-content: center; font-size: 15px; transition: all var(--transition);
+        }
+        .icon-btn:hover { background: var(--bg3); color: var(--text); }
+        .icon-btn.upload { color: var(--green); }
+        .icon-btn.upload:hover { background: rgba(158,206,106,0.12); }
+
+        /* 路径导航 */
+        .path-breadcrumb {
+            display: flex; align-items: center; padding: 8px 14px;
+            border-bottom: 1px solid var(--border); flex-shrink: 0;
+            font-size: 11px; font-family: 'Cascadia Code', monospace;
+            gap: 2px; flex-wrap: wrap; overflow-x: auto;
+            white-space: nowrap;
+        }
+        .path-breadcrumb .sep { color: var(--text-dim); margin: 0 2px; }
+        .path-breadcrumb .crumb {
+            color: var(--accent); cursor: pointer; padding: 2px 4px; border-radius: 3px;
+            transition: all var(--transition);
+        }
+        .path-breadcrumb .crumb:hover { background: var(--accent-dim); }
+        .path-breadcrumb .crumb.current { color: var(--text2); cursor: default; }
+        .path-breadcrumb .crumb.current:hover { background: transparent; }
+
+        /* 文件列表 */
+        .file-list {
+            flex: 1; overflow-y: auto; overflow-x: hidden;
+            scrollbar-width: thin; scrollbar-color: var(--accent-dim) transparent;
+        }
+        .file-list::-webkit-scrollbar { width: 5px; }
+        .file-list::-webkit-scrollbar-track { background: transparent; }
+        .file-list::-webkit-scrollbar-thumb { background: var(--accent-dim); border-radius: 3px; }
+
+        .file-item {
+            display: flex; align-items: center; padding: 5px 14px; cursor: pointer;
+            font-size: 12px; transition: all 0.1s; gap: 8px; border-left: 2px solid transparent;
+            white-space: nowrap;
+        }
+        .file-item:hover { background: var(--bg3); }
+        .file-item.selected { background: rgba(122,162,247,0.08); border-left-color: var(--accent); }
+        .file-item .icon { width: 18px; text-align: center; font-size: 14px; flex-shrink: 0; }
+        .file-item .name { flex: 1; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+        .file-item .size { font-size: 10px; color: var(--text-dim); flex-shrink: 0; }
+        .file-item .actions { display: none; gap: 2px; flex-shrink: 0; }
+        .file-item:hover .actions { display: flex; }
+        .file-item .act-btn {
+            background: transparent; border: none; color: var(--text-dim); cursor: pointer;
+            font-size: 13px; padding: 2px 5px; border-radius: 3px; transition: all var(--transition);
+        }
+        .file-item .act-btn:hover { background: var(--accent-dim); color: var(--text); }
+        .file-item .act-btn.del:hover { color: var(--red); }
+
+        /* 空状态 / Loading */
+        .sidebar-empty {
+            flex: 1; display: flex; flex-direction: column; align-items: center;
+            justify-content: center; color: var(--text-dim); font-size: 12px; gap: 8px;
+            padding: 20px; text-align: center;
+        }
+        .sidebar-empty .icon { font-size: 32px; opacity: 0.4; }
+        .spinner {
+            width: 20px; height: 20px; border: 2px solid var(--accent-dim);
+            border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ============ 终端区域 ============ */
+        #terminal-panel {
+            flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative;
+        }
+        #terminal-container { flex: 1; padding: 4px; background: var(--bg); overflow: hidden; }
+        #terminal-container .xterm { height: 100%; padding: 4px; }
+        #terminal-container .xterm-viewport::-webkit-scrollbar { width: 6px; }
+        #terminal-container .xterm-viewport::-webkit-scrollbar-track { background: transparent; }
+        #terminal-container .xterm-viewport::-webkit-scrollbar-thumb { background: var(--accent-dim); border-radius: 3px; }
+
+        /* 终端断线覆盖 */
+        .term-overlay {
+            position: absolute; inset: 0; background: rgba(15,17,23,0.92); z-index: 5;
+            display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+        }
+        .term-overlay.hidden { display: none; }
+        .term-overlay .msg { color: var(--text-dim); font-size: 14px; max-width: 300px; text-align: center; line-height: 1.6; }
+        .term-overlay .btn-connect {
+            background: var(--accent); border: none; color: #000; padding: 10px 28px;
+            border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;
+        }
+        .term-overlay .btn-connect:hover { opacity: 0.9; transform: translateY(-1px); }
+
+        /* ============ 欢迎弹窗 ============ */
+        #welcome-overlay {
+            position: fixed; inset: 0; z-index: 100;
+            background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center;
+            backdrop-filter: blur(4px);
+        }
+        #welcome-overlay.hidden { display: none; }
+        .welcome-card {
+            background: var(--bg2); border: 1px solid var(--border); border-radius: 12px;
+            width: 420px; max-width: 95vw; padding: 32px;
+            box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+            animation: slideUp 0.3s ease;
+        }
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .welcome-card .logo {
+            text-align: center; margin-bottom: 24px;
+        }
+        .welcome-card .logo .icon {
+            font-size: 48px; display: block; margin-bottom: 8px;
+        }
+        .welcome-card .logo h1 {
+            font-size: 22px; color: var(--accent); letter-spacing: 1px;
+            font-family: 'Cascadia Code', monospace;
+        }
+        .welcome-card .logo p {
+            font-size: 12px; color: var(--text-dim); margin-top: 4px;
+        }
+        .form-group {
+            margin-bottom: 16px;
+        }
+        .form-group label {
+            display: block; font-size: 12px; color: var(--text2); margin-bottom: 6px;
+            font-weight: 500;
+        }
+        .form-group input {
+            width: 100%; padding: 10px 14px; background: var(--bg);
+            border: 1px solid var(--border); border-radius: 6px;
+            color: var(--text); font-size: 14px; font-family: 'Cascadia Code', monospace;
+            outline: none; transition: border-color var(--transition);
+        }
+        .form-group input:focus { border-color: var(--accent); }
+        .form-group input::placeholder { color: var(--text-dim); }
+        .form-row { display: flex; gap: 10px; }
+        .form-row .form-group { flex: 1; }
+        .form-group .hint { font-size: 10px; color: var(--text-dim); margin-top: 4px; }
+        .form-error {
+            background: rgba(247,118,142,0.1); border: 1px solid rgba(247,118,142,0.3);
+            color: var(--red); padding: 10px 14px; border-radius: 6px;
+            font-size: 12px; margin-bottom: 16px; display: none;
+        }
+        .form-error.show { display: block; }
+        .btn-submit {
+            width: 100%; padding: 12px; background: var(--accent);
+            border: none; border-radius: 6px; color: #000; font-size: 15px;
+            font-weight: 600; cursor: pointer; transition: all var(--transition);
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        .btn-submit:hover { opacity: 0.9; transform: translateY(-1px); }
+        .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+        /* ============ 文件预览弹窗 ============ */
+        #preview-modal {
+            position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.6);
+            display: flex; align-items: center; justify-content: center;
+            backdrop-filter: blur(2px);
+        }
+        #preview-modal.hidden { display: none; }
+        .preview-dialog {
+            background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+            width: 80vw; max-width: 900px; max-height: 85vh; display: flex; flex-direction: column;
+            box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+        }
+        .preview-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 18px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+        }
+        .preview-header .title { font-size: 14px; color: var(--text2); font-family: 'Cascadia Code', monospace; }
+        .preview-body {
+            flex: 1; overflow: auto; padding: 16px; position: relative;
+        }
+        .preview-body pre {
+            font-family: 'Cascadia Code', 'Fira Code', monospace;
+            font-size: 12px; line-height: 1.6; color: var(--text);
+            white-space: pre-wrap; word-break: break-all; margin: 0;
+        }
+        .preview-body .truncated-warn {
+            background: rgba(224,175,104,0.1); border: 1px solid rgba(224,175,104,0.3);
+            color: var(--yellow); padding: 8px 14px; border-radius: 6px;
+            font-size: 12px; margin-bottom: 12px; text-align: center;
+        }
+        .preview-body .img-container { text-align: center; }
+        .preview-body .img-container img { max-width: 100%; max-height: 70vh; }
+        .preview-body .binary-notice {
+            text-align: center; color: var(--text-dim); padding: 40px 20px;
+        }
+
+        /* ============ Toast 消息 ============ */
+        .toast-container {
+            position: fixed; bottom: 20px; right: 20px; z-index: 300;
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .toast {
+            padding: 10px 18px; border-radius: 6px; font-size: 13px;
+            animation: slideIn 0.2s ease; max-width: 350px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+        }
+        @keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+        .toast.info { background: var(--bg3); border: 1px solid var(--accent-dim); color: var(--text); }
+        .toast.success { background: rgba(158,206,106,0.1); border: 1px solid rgba(158,206,106,0.3); color: var(--green); }
+        .toast.error { background: rgba(247,118,142,0.1); border: 1px solid rgba(247,118,142,0.3); color: var(--red); }
+
+        /* 响应式 */
+        @media (max-width: 700px) {
+            #sidebar { width: 220px; min-width: 220px; }
+            #sidebar.collapsed { width: 0; min-width: 0; }
+            .welcome-card { width: 95vw; padding: 24px; }
+            .form-row { flex-direction: column; gap: 0; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="app">
+    <!-- ===== 状态栏 ===== -->
+    <div class="status-bar">
+        <div class="left">
+            <span class="brand">FnTerm</span>
+            <span id="status-indicator">
+                <span class="status-dot off" id="status-dot"></span>
+                <span id="status-text">离线</span>
+            </span>
+        </div>
+        <div class="right">
+            <span class="conn-info" id="conn-info"></span>
+            <button class="btn-sm" id="btn-sidebar" title="收起/展开侧边栏">☰</button>
+            <button class="btn-sm" id="btn-font-plus">A+</button>
+            <button class="btn-sm" id="btn-font-minus">A-</button>
+            <button class="btn-sm" id="btn-clear">清屏</button>
+            <button class="btn-sm danger" id="btn-disconnect" style="display:none">挂断</button>
+        </div>
+    </div>
+
+    <!-- ===== 主区域 ===== -->
+    <div id="main-area">
+        <!-- 侧边栏：文件浏览器 -->
+        <div id="sidebar">
+            <div class="sidebar-header">
+                <span class="title">文件</span>
+                <div class="actions">
+                    <button class="icon-btn" id="btn-refresh" title="刷新">↻</button>
+                    <button class="icon-btn" id="btn-home" title="主目录">~</button>
+                    <button class="icon-btn" id="btn-new-dir" title="新建文件夹">+</button>
+                    <button class="icon-btn upload" id="btn-upload" title="上传文件">↑</button>
+                </div>
+            </div>
+            <div class="path-breadcrumb" id="breadcrumb"></div>
+            <div class="sidebar-empty" id="sidebar-empty">
+                <span style="color:var(--text-dim)">还没连上</span>
+            </div>
+            <div class="file-list" id="file-list" style="display:none"></div>
+            <!-- 隐藏的文件上传 input -->
+            <input type="file" id="file-upload-input" style="display:none" multiple />
+        </div>
+
+        <!-- 终端面板 -->
+        <div id="terminal-panel">
+            <div id="terminal-container"></div>
+            <div class="term-overlay" id="term-overlay">
+                <div style="font-size:40px">$</div>
+                <div class="msg">还没连接，点下面输入服务器信息</div>
+                <button class="btn-connect" id="btn-show-welcome">连一台机器</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== 欢迎弹窗 ===== -->
+<div id="welcome-overlay">
+    <div class="welcome-card">
+        <div class="logo">
+            <h1>FnTerm</h1>
+            <p>连一台服务器，在浏览器里直接敲命令</p>
+        </div>
+        <div class="form-error" id="form-error"></div>
+        <form id="connect-form" autocomplete="off">
+            <div class="form-group">
+                <label>地址</label>
+                <input type="text" id="input-host" placeholder="192.168.1.100 或 your-server.com" required autofocus />
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>端口</label>
+                    <input type="number" id="input-port" value="22" min="1" max="65535" required />
+                </div>
+                <div class="form-group">
+                    <label>用户名</label>
+                    <input type="text" id="input-username" placeholder="root" required />
+                </div>
+            </div>
+            <div class="form-group">
+                <label>密码</label>
+                <input type="password" id="input-password" placeholder="输 SSH 密码" required />
+                <div class="hint">走本地服务器，不存密码</div>
+            </div>
+            <button type="submit" class="btn-submit" id="btn-connect">
+                连上看看
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- ===== 文件预览弹窗 ===== -->
+<div id="preview-modal" class="hidden">
+    <div class="preview-dialog">
+        <div class="preview-header">
+            <span class="title" id="preview-title">文件预览</span>
+            <div style="display:flex;gap:4px">
+                <button class="btn-sm" id="btn-preview-download">下载</button>
+                <button class="btn-sm" id="btn-preview-close">关闭</button>
+            </div>
+        </div>
+        <div class="preview-body" id="preview-body"></div>
+    </div>
+</div>
+
+<!-- Toast 容器 -->
+<div class="toast-container" id="toast-container"></div>
+
+<!-- xterm.js -->
+<script src="https://unpkg.com/@xterm/xterm@5.5.0/lib/xterm.js"></script>
+<script src="https://unpkg.com/@xterm/addon-fit@0.10.0/lib/addon-fit.js"></script>
+<script src="https://unpkg.com/@xterm/addon-web-links@0.11.0/lib/addon-web-links.js"></script>
+
+<script>
+(function() {
+    // ============ DOM 引用 ============
+    const $ = (sel) => document.querySelector(sel);
+    const $$ = (sel) => document.querySelectorAll(sel);
+
+    const statusDot = $('#status-dot');
+    const statusText = $('#status-text');
+    const connInfo = $('#conn-info');
+    const btnDisconnect = $('#btn-disconnect');
+    const btnShowWelcome = $('#btn-show-welcome');
+    const welcomeOverlay = $('#welcome-overlay');
+    const connectForm = $('#connect-form');
+    const formError = $('#form-error');
+    const btnConnect = $('#btn-connect');
+    const termOverlay = $('#term-overlay');
+    const termContainer = $('#terminal-container');
+    const sidebar = $('#sidebar');
+    const sidebarEmpty = $('#sidebar-empty');
+    const fileList = $('#file-list');
+    const breadcrumb = $('#breadcrumb');
+    const previewModal = $('#preview-modal');
+    const previewTitle = $('#preview-title');
+    const previewBody = $('#preview-body');
+    const fileUploadInput = $('#file-upload-input');
+    const toastContainer = $('#toast-container');
+
+    // ============ 状态 ============
+    let ws = null;
+    let term = null;
+    let fitAddon = null;
+    let isConnected = false;
+    let currentPath = '/';
+    let selectedFile = null;
+
+    // ============ Toast ============
+    function toast(msg, type = 'info') {
+        const el = document.createElement('div');
+        el.className = `toast ${type}`;
+        el.textContent = msg;
+        toastContainer.appendChild(el);
+        setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity 0.3s'; }, 2500);
+        setTimeout(() => el.remove(), 3000);
+    }
+
+    // ============ 状态更新 ============
+    function updateConnectionState(connected, host, username) {
+        isConnected = connected;
+        if (connected) {
+            statusDot.className = 'status-dot on';
+            statusText.textContent = '在线';
+            connInfo.textContent = `${username}@${host}`;
+            btnDisconnect.style.display = '';
+            $('#btn-sidebar').classList.add('active');
+            termOverlay.classList.add('hidden');
+        } else {
+            statusDot.className = 'status-dot off';
+            statusText.textContent = '离线';
+            connInfo.textContent = '';
+            btnDisconnect.style.display = 'none';
+            $('#btn-sidebar').classList.remove('active');
+            termOverlay.classList.remove('hidden');
+        }
+    }
+
+    // ============ SSH 连接 ============
+    async function doConnect(host, port, username, password) {
+        formError.classList.remove('show');
+        btnConnect.disabled = true;
+        btnConnect.innerHTML = '<span class="spinner"></span> 稍等...';
+
+        try {
+            const resp = await fetch('/api/connect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ host, port, username, password })
+            });
+            const data = await resp.json();
+
+            if (data.success) {
+                welcomeOverlay.classList.add('hidden');
+                updateConnectionState(true, host, username);
+                connectWebSocket();
+                loadFiles('/');
+                toast(`连上了 ${username}@${host}`);
+            } else {
+                formError.textContent = (data.error || '连不上');
+                formError.classList.add('show');
+            }
+        } catch (err) {
+            formError.textContent = '网络不通: ' + err.message;
+            formError.classList.add('show');
+        } finally {
+            btnConnect.disabled = false;
+            btnConnect.innerHTML = '连上看看';
+        }
+    }
+
+    async function doDisconnect() {
+        try {
+            await fetch('/api/disconnect', { method: 'POST' });
+        } catch (_) {}
+        if (ws) { ws.close(); ws = null; }
+        updateConnectionState(false);
+        fileList.style.display = 'none';
+        sidebarEmpty.style.display = '';
+        breadcrumb.innerHTML = '';
+        welcomeOverlay.classList.remove('hidden');
+        toast('已挂断');
+    }
+
+    // ============ WebSocket 终端 ============
+    function connectWebSocket() {
+        if (ws && ws.readyState === WebSocket.OPEN) return;
+
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws`;
+
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+            console.log('[FnTerm] WS 已连接');
+            ws.send(JSON.stringify({ type: 'init' }));
+        };
+
+        ws.onmessage = (event) => {
+            if (term) term.write(event.data);
+        };
+
+        ws.onclose = () => {
+            console.log('[FnTerm] WS 关闭');
+            ws = null;
+            if (isConnected) {
+                termOverlay.classList.remove('hidden');
+                termOverlay.querySelector('.msg').textContent = '终端断了，重新连一下？';
+            }
+        };
+
+        ws.onerror = (err) => console.error('[FnTerm] WS 错误:', err);
+    }
+
+    // ============ xterm.js ============
+    function initTerminal() {
+        term = new Terminal({
+            cursorBlink: true, cursorStyle: 'bar', fontSize: 14,
+            fontFamily: "'Cascadia Code','Fira Code','JetBrains Mono',Consolas,monospace",
+            theme: {
+                background: '#0f1117', foreground: '#c0caf5',
+                cursor: '#7aa2f7', cursorAccent: '#0f1117',
+                selectionBackground: '#3b4261',
+                black: '#1a1b26', red: '#f7768e', green: '#9ece6a',
+                yellow: '#e0af68', blue: '#7aa2f7', magenta: '#bb9af7',
+                cyan: '#7dcfff', white: '#a9b1d6',
+                brightBlack: '#414868', brightRed: '#f7768e', brightGreen: '#9ece6a',
+                brightYellow: '#e0af68', brightBlue: '#7aa2f7', brightMagenta: '#bb9af7',
+                brightCyan: '#7dcfff', brightWhite: '#c0caf5'
+            },
+            scrollback: 5000, tabStopWidth: 4
+        });
+
+        fitAddon = new FitAddon.FitAddon();
+        term.loadAddon(fitAddon);
+        term.loadAddon(new WebLinksAddon.WebLinksAddon());
+
+        term.open(termContainer);
+        fitAddon.fit();
+
+        window.addEventListener('resize', () => { fitAddon.fit(); sendResize(); });
+
+        term.onData(data => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'input', data }));
+            }
+        });
+
+        term.onResize(() => sendResize());
+        term.writeln('\x1b[1;36mFnTerm\x1b[0m');
+        term.writeln('\x1b[2m填好地址密码，点连接就行\x1b[0m');
+    }
+
+    function sendResize() {
+        if (ws && ws.readyState === WebSocket.OPEN && term) {
+            ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+        }
+    }
+
+    // ============ 文件管理 ============
+    async function loadFiles(dirPath) {
+        if (!isConnected) return;
+
+        currentPath = dirPath || currentPath;
+        fileList.style.display = 'none';
+        sidebarEmpty.innerHTML = '<div class="spinner"></div><div>等等...</div>';
+        sidebarEmpty.style.display = '';
+
+        try {
+            const resp = await fetch(`/api/files/list?path=${encodeURIComponent(currentPath)}`);
+            const data = await resp.json();
+
+            if (data.error) {
+                sidebarEmpty.innerHTML = `<span style="color:var(--red)">${data.error}</span>`;
+                return;
+            }
+
+            renderBreadcrumb(data.path);
+            renderFileList(data.items);
+            fileList.style.display = '';
+            sidebarEmpty.style.display = 'none';
+        } catch (err) {
+            sidebarEmpty.innerHTML = `<span style="color:var(--red)">${err.message}</span>`;
+        }
+    }
+
+    function renderBreadcrumb(dirPath) {
+        const parts = dirPath.split('/').filter(Boolean);
+        let html = '<span class="crumb" data-path="/">/</span>';
+        let acc = '';
+        parts.forEach((part, i) => {
+            acc += '/' + part;
+            const cls = i === parts.length - 1 ? 'crumb current' : 'crumb';
+            html += `<span class="sep">/</span><span class="${cls}" data-path="${acc}">${part}</span>`;
+        });
+        breadcrumb.innerHTML = html;
+
+        breadcrumb.querySelectorAll('.crumb:not(.current)').forEach(el => {
+            el.addEventListener('click', () => loadFiles(el.dataset.path));
+        });
+    }
+
+    function renderFileList(items) {
+        if (items.length === 0) {
+            fileList.innerHTML = '<div class="sidebar-empty"><span style="color:var(--text-dim)">空的</span></div>';
+            return;
+        }
+
+        fileList.innerHTML = items.map(item => {
+            const icon = item.isDirectory ? '📁' : getFileIcon(item.name);
+            const sizeStr = item.isDirectory ? '' : formatSize(item.size);
+            return `
+                <div class="file-item" data-path="${escapeHtml(currentPath + '/' + item.name).replace(/\/\//g,'/')}" data-isdir="${item.isDirectory}">
+                    <span class="icon">${icon}</span>
+                    <span class="name">${escapeHtml(item.name)}</span>
+                    <span class="size">${sizeStr}</span>
+                    <span class="actions">
+                        <button class="act-btn" data-action="preview" title="预览">👁</button>
+                        <button class="act-btn" data-action="download" title="下载">⬇</button>
+                        <button class="act-btn del" data-action="delete" title="删除">🗑</button>
+                    </span>
+                </div>`;
+        }).join('');
+
+        // 点击文件项
+        fileList.querySelectorAll('.file-item').forEach(el => {
+            el.addEventListener('click', (e) => {
+                // 忽略操作按钮的点击
+                if (e.target.closest('.act-btn')) return;
+
+                const path = el.dataset.path;
+                const isDir = el.dataset.isdir === 'true';
+
+                // 选择文件
+                fileList.querySelectorAll('.file-item').forEach(f => f.classList.remove('selected'));
+                el.classList.add('selected');
+                selectedFile = { path, isDir, name: el.querySelector('.name').textContent };
+
+                if (isDir) {
+                    loadFiles(path);
+                }
+            });
+
+            // 双击进入目录 / 预览文件
+            el.addEventListener('dblclick', (e) => {
+                if (e.target.closest('.act-btn')) return;
+                const path = el.dataset.path;
+                if (el.dataset.isdir === 'true') {
+                    loadFiles(path);
+                } else {
+                    previewFile(path, el.querySelector('.name').textContent);
+                }
+            });
+        });
+
+        // 操作按钮事件
+        fileList.querySelectorAll('.act-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const item = btn.closest('.file-item');
+                const path = item.dataset.path;
+                const name = item.querySelector('.name').textContent;
+                const action = btn.dataset.action;
+
+                if (action === 'preview') previewFile(path, name);
+                else if (action === 'download') downloadFile(path, name);
+                else if (action === 'delete') deleteFile(path, name);
+            });
+        });
+    }
+
+    function getFileIcon(name) {
+        const ext = name.split('.').pop().toLowerCase();
+        const icons = {
+            txt: '📄', md: '📝', json: '📋', xml: '📋',
+            html: '🌐', htm: '🌐', css: '🎨', js: '📜', ts: '📜',
+            jsx: '⚛', tsx: '⚛', vue: '💚', py: '🐍', rb: '💎',
+            php: '🐘', java: '☕', c: '⚙', cpp: '⚙', h: '⚙',
+            go: '🔷', rs: '🦀', swift: '🦅', kt: '🟣',
+            sh: '💻', bash: '💻', zsh: '💻', yaml: '⚙', yml: '⚙',
+            toml: '⚙', ini: '⚙', cfg: '⚙', conf: '⚙', log: '📋',
+            csv: '📊', sql: '🗄', env: '🔑', lock: '🔒',
+            png: '🖼', jpg: '🖼', jpeg: '🖼', gif: '🖼', svg: '🖼',
+            webp: '🖼', bmp: '🖼', ico: '🖼',
+            mp4: '🎬', avi: '🎬', mkv: '🎬', mov: '🎬',
+            mp3: '🎵', wav: '🎵', flac: '🎵', ogg: '🎵',
+            zip: '📦', tar: '📦', gz: '📦', rar: '📦', '7z': '📦',
+            pdf: '📕', doc: '📘', docx: '📘', ppt: '📙', pptx: '📙',
+            xls: '📗', xlsx: '📗',
+            deb: '📦', rpm: '📦', apk: '📱',
+            iso: '💿', img: '💿', bin: '⚙', exe: '⚙', dll: '⚙',
+            so: '⚙', dockerfile: '🐳'
+        };
+        return icons[ext] || '📄';
+    }
+
+    async function previewFile(filePath, name) {
+        previewTitle.textContent = name;
+        previewBody.innerHTML = '<div style="text-align:center;padding:40px"><div class="spinner"></div><div style="margin-top:8px;color:var(--text-dim)">等等...</div></div>';
+        previewModal.classList.remove('hidden');
+
+        try {
+            const resp = await fetch(`/api/files/read?path=${encodeURIComponent(filePath)}`);
+            const data = await resp.json();
+
+            if (data.error) {
+                previewBody.innerHTML = `<div class="binary-notice">${data.error}</div>`;
+                return;
+            }
+
+            let html = '';
+            if (data.truncated) {
+                html += `<div class="truncated-warn">文件有点大（${formatSize(data.size)}），只显示了前面 1MB</div>`;
+            }
+
+            if (data.isText && data.content) {
+                html += `<pre>${escapeHtml(data.content)}</pre>`;
+            } else if (!data.isText) {
+                // 图片预览
+                const ext = name.split('.').pop().toLowerCase();
+                if (['png','jpg','jpeg','gif','svg','webp','bmp','ico'].includes(ext)) {
+                    html += `<div class="img-container"><img src="data:image/${ext};base64,${data.base64}" alt="${name}" /></div>`;
+                } else {
+                    html += `<div class="binary-notify">二进制文件 (${formatSize(data.size)})<br><br>没法在浏览器里看，下载吧</div>`;
+                }
+            }
+
+            previewBody.innerHTML = html;
+        } catch (err) {
+            previewBody.innerHTML = `<div class="binary-notice">${err.message}</div>`;
+        }
+    }
+
+    async function downloadFile(filePath, name) {
+        try {
+            const resp = await fetch(`/api/files/download?path=${encodeURIComponent(filePath)}`);
+            if (!resp.ok) throw new Error('下载失败');
+
+            const blob = await resp.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = name;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            toast(`搞定了 ${name}`);
+        } catch (err) {
+            toast(`下载出错了: ${err.message}`, 'error');
+        }
+    }
+
+    async function deleteFile(filePath, name) {
+        if (!confirm(`真要删掉 "${name}" ？删了就没了。`)) return;
+
+        try {
+            const resp = await fetch(`/api/files/delete?path=${encodeURIComponent(filePath)}`, { method: 'DELETE' });
+            const data = await resp.json();
+            if (data.success) {
+                toast(`删掉了 ${name}`);
+                loadFiles(currentPath);
+            } else {
+                toast(`删不掉: ${data.error}`, 'error');
+            }
+        } catch (err) {
+            toast(`删除失败: ${err.message}`, 'error');
+        }
+    }
+
+    async function uploadFiles(files) {
+        if (!isConnected || files.length === 0) return;
+
+        for (const file of files) {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('path', currentPath);
+
+            try {
+                const resp = await fetch('/api/files/upload', { method: 'POST', body: formData });
+                const data = await resp.json();
+                if (data.success) {
+                    toast(`传好了 ${file.name}`);
+                } else {
+                    toast(`没传上去: ${data.error}`, 'error');
+                }
+            } catch (err) {
+                toast(`传文件出错了: ${err.message}`, 'error');
+            }
+        }
+        loadFiles(currentPath);
+    }
+
+    async function createDirectory() {
+        const name = prompt('文件夹名字:');
+        if (!name) return;
+
+        const dirPath = currentPath + '/' + name;
+        try {
+            const resp = await fetch('/api/files/mkdir', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: dirPath.replace(/\/\//g, '/') })
+            });
+            const data = await resp.json();
+            if (data.success) {
+                toast(`建好了 ${name}`);
+                loadFiles(currentPath);
+            } else {
+                toast(`建文件夹出错: ${data.error}`, 'error');
+            }
+        } catch (err) {
+            toast(`创建失败: ${err.message}`, 'error');
+        }
+    }
+
+    // ============ 工具函数 ============
+    function formatSize(bytes) {
+        if (!bytes || bytes === 0) return '0 B';
+        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const k = 1024;
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(i > 1 ? 2 : 0)) + ' ' + units[i];
+    }
+
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    // ============ 事件绑定 ============
+
+    // 连接表单
+    connectForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const host = $('#input-host').value.trim();
+        const port = $('#input-port').value.trim();
+        const username = $('#input-username').value.trim();
+        const password = $('#input-password').value;
+
+        if (!host || !port || !username || !password) {
+            formError.textContent = '还有空着的，填完再连';
+            formError.classList.add('show');
+            return;
+        }
+        doConnect(host, port, username, password);
+    });
+
+    // 断开连接
+    btnDisconnect.addEventListener('click', doDisconnect);
+    btnShowWelcome.addEventListener('click', () => {
+        welcomeOverlay.classList.remove('hidden');
+        $('#input-host').focus();
+    });
+
+    // 侧边栏切换
+    $('#btn-sidebar').addEventListener('click', () => {
+        sidebar.classList.toggle('collapsed');
+        fitAddon.fit();
+        sendResize();
+    });
+
+    // 终端按钮
+    $('#btn-font-plus').addEventListener('click', () => {
+        if (!term) return;
+        term.options.fontSize = Math.min(term.options.fontSize + 1, 28);
+        fitAddon.fit(); sendResize();
+    });
+    $('#btn-font-minus').addEventListener('click', () => {
+        if (!term) return;
+        term.options.fontSize = Math.max(term.options.fontSize - 1, 10);
+        fitAddon.fit(); sendResize();
+    });
+    $('#btn-clear').addEventListener('click', () => {
+        if (term) { term.clear(); }
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'input', data: '\x0c' }));
+        }
+    });
+
+    // 文件操作按钮
+    $('#btn-refresh').addEventListener('click', () => loadFiles(currentPath));
+    $('#btn-home').addEventListener('click', () => loadFiles('/'));
+    $('#btn-upload').addEventListener('click', () => fileUploadInput.click());
+    $('#btn-new-dir').addEventListener('click', createDirectory);
+
+    fileUploadInput.addEventListener('change', () => {
+        if (fileUploadInput.files.length > 0) {
+            uploadFiles(fileUploadInput.files);
+            fileUploadInput.value = '';
+        }
+    });
+
+    // 预览弹窗
+    $('#btn-preview-close').addEventListener('click', () => previewModal.classList.add('hidden'));
+    $('#btn-preview-download').addEventListener('click', () => {
+        if (selectedFile) downloadFile(selectedFile.path, selectedFile.name);
+    });
+    previewModal.addEventListener('click', (e) => {
+        if (e.target === previewModal) previewModal.classList.add('hidden');
+    });
+
+    // 面包屑导航
+    breadcrumb.addEventListener('click', (e) => {
+        const crumb = e.target.closest('.crumb');
+        if (crumb && crumb.dataset.path) {
+            loadFiles(crumb.dataset.path);
+        }
+    });
+
+    // 键盘快捷键
+    document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.key === 'b') {
+            e.preventDefault();
+            $('#btn-sidebar').click();
+        }
+        if (e.ctrlKey && e.shiftKey && e.key === '=') {
+            e.preventDefault();
+            $('#btn-font-plus').click();
+        }
+    });
+
+    // 拖拽上传
+    sidebar.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        sidebar.style.background = 'var(--bg3)';
+    });
+    sidebar.addEventListener('dragleave', () => {
+        sidebar.style.background = '';
+    });
+    sidebar.addEventListener('drop', (e) => {
+        e.preventDefault();
+        sidebar.style.background = '';
+        if (!isConnected) { toast('先连上再说', 'error'); return; }
+        if (e.dataTransfer.files.length > 0) {
+            uploadFiles(e.dataTransfer.files);
+        }
+    });
+
+    // 关闭前断开
+    window.addEventListener('beforeunload', () => {
+        if (ws) ws.close();
+        fetch('/api/disconnect', { method: 'POST' }).catch(() => {});
+    });
+
+    // ============ 启动 ============
+    initTerminal();
+
+    // 检查是否已有活跃连接
+    fetch('/api/status')
+        .then(r => r.json())
+        .then(data => {
+            if (data.connected) {
+                updateConnectionState(true, data.host, data.username);
+                welcomeOverlay.classList.add('hidden');
+                connectWebSocket();
+                loadFiles('/');
+            } else {
+                welcomeOverlay.classList.remove('hidden');
+                $('#input-host').focus();
+            }
+        })
+        .catch(() => {
+            welcomeOverlay.classList.remove('hidden');
+        });
+
+    console.log('🖥 FnTerm v2.0 前端初始化完成');
+})();
+</script>
+</body>
+</html>

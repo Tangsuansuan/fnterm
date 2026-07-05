@@ -1,0 +1,14 @@
+#!/bin/bash
+# FnTerm - 卸载初始化脚本
+
+echo "=== FnTerm 卸载准备 ==="
+
+# 如果应用正在运行，先停止
+if pgrep -f "node.*fnterm.*$TRIM_SERVICE_PORT" > /dev/null 2>&1; then
+    echo "停止正在运行的服务..."
+    pkill -f "node.*fnterm.*$TRIM_SERVICE_PORT" 2>/dev/null || true
+    sleep 1
+fi
+
+echo "卸载准备完成"
+exit 0

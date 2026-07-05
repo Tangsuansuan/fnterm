@@ -1,0 +1,30 @@
+[
+    {
+        "stepTitle": "安装 FnTerm",
+        "items": [
+            {
+                "type": "tips",
+                "helpText": "FnTerm 是一个网页 SSH 终端。连上服务器就能在浏览器里敲命令，带文件管理。"
+            },
+            {
+                "type": "tips",
+                "helpText": "需要 Node.js v22，安装时会自动搞定。"
+            }
+        ]
+    },
+    {
+        "stepTitle": "端口",
+        "items": [
+            {
+                "type": "text",
+                "field": "wizard_port",
+                "label": "跑在哪个端口",
+                "initValue": "8099",
+                "rules": [
+                    { "required": true, "message": "填个端口号" },
+                    { "pattern": "^[0-9]+$", "message": "得是数字" }
+                ]
+            }
+        ]
+    }
+]

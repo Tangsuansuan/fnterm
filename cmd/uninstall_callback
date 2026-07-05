@@ -1,0 +1,4 @@
+#!/bin/bash
+# FnTerm - 卸载后回调脚本
+echo "FnTerm 卸载完成"
+exit 0

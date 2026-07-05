@@ -1,0 +1,4 @@
+#!/bin/bash
+# FnTerm - 升级后回调脚本
+echo "FnTerm 升级完成"
+exit 0

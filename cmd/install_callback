@@ -1,0 +1,46 @@
+#!/bin/bash
+# FnTerm - 安装后回调
+
+exec &> "$TRIM_TEMP_LOGFILE"
+
+echo "FnTerm install_callback start"
+
+# 找 node
+for d in /var/apps/nodejs_v22/target/bin /var/apps/nodejs_v20/target/bin /var/apps/nodejs*/target/bin; do
+    if [ -x "$d/node" ]; then
+        export PATH="$d:$PATH"
+        break
+    fi
+done
+
+node --version 2>&1 || { echo "ERROR: node 不可用"; exit 1; }
+
+# npm 需要可写的 HOME 目录，fnOS 的 app 用户没有 /home 权限
+# 用 TRIM_PKGTMP 或 TRIM_APPDEST 作为临时 HOME
+if [ -d "$TRIM_PKGTMP" ]; then
+    export HOME="$TRIM_PKGTMP"
+elif [ -d "$TRIM_APPDEST" ]; then
+    export HOME="$TRIM_APPDEST"
+else
+    export HOME=/tmp
+fi
+
+mkdir -p "$HOME/.npm"
+npm config set cache "$HOME/.npm" 2>/dev/null
+
+cd "$TRIM_APPDEST/server" || { echo "ERROR: $TRIM_APPDEST/server 不存在"; ls "$TRIM_APPDEST"; exit 1; }
+
+echo "HOME=$HOME"
+echo "npm install..."
+npm install --production --no-audit --no-fund 2>&1 || {
+    echo "重试..."
+    npm install --production --no-audit --no-fund 2>&1 || { echo "ERROR: npm install 最终失败"; exit 1; }
+}
+
+echo "验证依赖..."
+for pkg in express ws ssh2 multer; do
+    node -e "require('$pkg')" 2>&1 && echo "  $pkg OK" || echo "  $pkg FAIL"
+done
+
+echo "install_callback done"
+exit 0

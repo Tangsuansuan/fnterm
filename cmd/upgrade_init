@@ -1,0 +1,4 @@
+#!/bin/bash
+# FnTerm - 升级初始化脚本
+echo "FnTerm 升级初始化"
+exit 0

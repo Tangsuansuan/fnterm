@@ -1,0 +1,25 @@
+appname=fnterm
+version=2.0.0
+display_name=FnTerm
+desc=<![CDATA[<h2>FnTerm — 浏览器里的 SSH 终端</h2><p>连上服务器直接在网页里敲命令，不用装客户端。带一个侧边栏文件管理，预览、上传、下载都行。</p><p>填 IP、用户名、密码就能用。</p>]]></desc>
+platform=all
+source=thirdparty
+
+maintainer=FnTerm Dev
+maintainer_url=https://github.com/fnterm
+distributor=FnTerm
+distributor_url=https://github.com/fnterm
+
+os_min_version=0.8.0
+
+desktop_uidir=ui
+desktop_applaunchname=fnterm.APPLICATION
+
+service_port=8099
+checkport=true
+
+install_dep_apps=nodejs_v22
+
+ctl_stop=true
+
+changelog=<![CDATA[<h3>v2.0.0</h3><ul><li>支持 SSH 远程连接了，填 IP 账号密码就能用</li><li>加了侧边栏文件管理，浏览、预览、上传、下载、删文件都行</li><li>支持拖拽上传</li><li>重做了界面，三栏布局</li><li>底层从 node-pty 换成了 ssh2</li></ul><h3>v1.0.0</h3><ul><li>第一版，基础的网页终端</li></ul>]]></changelog>

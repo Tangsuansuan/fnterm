@@ -1,0 +1,5 @@
+#!/bin/bash
+# FnTerm - 安装初始化
+
+echo "FnTerm install_init: ok"
+exit 0

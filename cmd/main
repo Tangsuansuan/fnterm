@@ -1,0 +1,51 @@
+#!/bin/bash
+# FnTerm - 主脚本
+
+# 找 node
+NODE_BIN=""
+for d in /var/apps/nodejs_v22/target/bin /var/apps/nodejs_v20/target/bin /var/apps/nodejs*/target/bin; do
+    [ -x "$d/node" ] && { NODE_BIN="$d"; break; }
+done
+[ -n "$NODE_BIN" ] && export PATH="$NODE_BIN:$PATH"
+
+# npm 需要可写的 HOME
+[ -d "$TRIM_PKGVAR" ] && export HOME="$TRIM_PKGVAR"
+mkdir -p "$HOME/.npm" 2>/dev/null
+
+APP_DIR="$TRIM_APPDEST/server"
+PID_FILE="$TRIM_PKGVAR/fnterm.pid"
+LOG_FILE="$TRIM_PKGVAR/fnterm.log"
+
+case $1 in
+start)
+    [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null && { echo "已经在跑"; exit 0; }
+
+    [ -d "$APP_DIR" ] || { echo "ERROR: $APP_DIR 不存在"; exit 1; }
+    cd "$APP_DIR"
+
+    [ -d "node_modules" ] || { echo "装依赖..."; npm install --production >> "$LOG_FILE" 2>&1; }
+
+    TRIM_SERVICE_PORT="${TRIM_SERVICE_PORT:-8099}"
+    nohup node server.js >> "$LOG_FILE" 2>&1 &
+    echo $! > "$PID_FILE"
+
+    sleep 2
+    kill -0 "$(cat "$PID_FILE")" 2>/dev/null && { echo "ok (port $TRIM_SERVICE_PORT)"; exit 0; }
+    echo "启动失败，看 $LOG_FILE"
+    exit 1
+    ;;
+stop)
+    [ -f "$PID_FILE" ] && { kill "$(cat "$PID_FILE")" 2>/dev/null; sleep 1; kill -9 "$(cat "$PID_FILE")" 2>/dev/null; rm -f "$PID_FILE"; }
+    pkill -f "node.*fnterm" 2>/dev/null
+    exit 0
+    ;;
+status)
+    [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null && { echo "正在跑"; exit 0; }
+    echo "没在跑"
+    exit 3
+    ;;
+*)
+    echo "用法: $0 {start|stop|status}"
+    exit 1
+    ;;
+esac

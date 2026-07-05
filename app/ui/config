@@ -1,0 +1,13 @@
+{
+    ".url": {
+        "fnterm.APPLICATION": {
+            "title": "FnTerm",
+            "icon": "images/icon_{0}.png",
+            "type": "url",
+            "protocol": "http",
+            "port": "8099",
+            "url": "/",
+            "allUsers": true
+        }
+    }
+}
